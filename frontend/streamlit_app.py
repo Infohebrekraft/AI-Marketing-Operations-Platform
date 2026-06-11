@@ -4,7 +4,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
-API = os.getenv('BACKEND_BASE_URL', 'http://localhost:8000')
+API = os.getenv("API_BASE_URL", "https://hebrekraft-api.onrender.com").rstrip("/")
 
 st.set_page_config(page_title='HebreKraft SaaS Sprint 3.0', layout='wide')
 st.title('HebreKraft AI Marketing Operations')
