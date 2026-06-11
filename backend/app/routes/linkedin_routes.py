@@ -12,6 +12,7 @@ from ..linkedin_service import (
     fetch_member_profile,
     build_member_urn,
     publish_text_post,
+    publish_image_post,
 )
 
 router = APIRouter(prefix='/api/linkedin', tags=['linkedin'])
@@ -101,7 +102,21 @@ async def publish(
         raise HTTPException(status_code=400, detail='No LinkedIn author URN found')
 
     try:
-        result = await publish_text_post(access_token, author_urn, post.content)
+        if post.image_path:
+            result = await publish_image_post(
+                access_token=access_token,
+                author_urn=author_urn,
+                text=post.content,
+                image_path=post.image_path,
+                image_title=post.title or "HebreKraft AI Marketing"
+            )
+        else:
+            result = await publish_text_post(
+                access_token,
+                author_urn,
+                post.content
+            )
+        
         post.status = 'published'
         db.commit()
         return {
