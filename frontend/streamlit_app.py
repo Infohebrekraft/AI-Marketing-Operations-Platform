@@ -141,28 +141,84 @@ with tab_generate:
             st.success('Post generated and saved')
             st.markdown(f"### {data['title']}")
             st.write(data['content'])
-            st.json(data.get('ai_metadata', {}))
+            
+            with st.expander("AI generation details"):
+                st.json(data.get('ai_metadata', {}))
+
 
 with tab_posts:
     st.subheader('Generated Posts')
     posts = api_get(f'/api/content/org/{org_id}/posts') or []
+
     for p in posts:
         with st.expander(f"#{p['id']} — {p['title']} — {p['status']}"):
-            st.write(p['content'])
+            edited_title = st.text_input(
+                f"Title for post {p['id']}",
+                value=p.get('title') or '',
+                key=f"title_{p['id']}"
+            )
+
+            edited_content = st.text_area(
+                f"Content for post {p['id']}",
+                value=p.get('content') or '',
+                height=240,
+                key=f"content_{p['id']}"
+            )
+
+            image_prompt = st.text_area(
+                f"Image direction / prompt for post {p['id']}",
+                value=f"{p.get('image_title') or ''}\n{p.get('image_subtitle') or ''}",
+                height=100,
+                key=f"image_prompt_{p['id']}"
+            )
+
+            uploaded_image = st.file_uploader(
+                f"Upload/change image for post {p['id']}",
+                type=["png", "jpg", "jpeg"],
+                key=f"image_upload_{p['id']}"
+            )
+
             st.caption(f"Topic: {p.get('topic')} | Scheduled: {p.get('scheduled_time')}")
-            scheduled_time = st.text_input(f'Schedule time for post {p["id"]}', value=p.get('scheduled_time') or '2026-06-12T09:00:00+04:00', key=f'sch_{p["id"]}')
-            col1, col2 = st.columns(2)
+
+            scheduled_time = st.text_input(
+                f'Schedule time for post {p["id"]}',
+                value=p.get('scheduled_time') or '2026-06-12T09:00:00+04:00',
+                key=f'sch_{p["id"]}'
+            )
+
+            col1, col2, col3 = st.columns(3)
+
             with col1:
+                if st.button('Save Draft Changes', key=f'save_{p["id"]}'):
+                    res = api_put(
+                        f'/api/content/posts/{p["id"]}',
+                        {
+                            'title': edited_title,
+                            'content': edited_content,
+                            'image_prompt': image_prompt
+                        }
+                    )
+                    if res:
+                        st.success('Draft updated')
+
+            with col2:
                 if st.button('Schedule', key=f'schedule_{p["id"]}'):
-                    res = api_post('/api/content/schedule', {'post_id': p['id'], 'scheduled_time': scheduled_time})
+                    res = api_post(
+                        '/api/content/schedule',
+                        {
+                            'post_id': p['id'],
+                            'scheduled_time': scheduled_time
+                        }
+                    )
                     if res:
                         st.success('Scheduled')
-            with col2:
+
+            with col3:
                 if st.button('Publish Now to LinkedIn', key=f'publish_{p["id"]}'):
                     res = api_post(f'/api/linkedin/publish/{p["id"]}', {})
                     if res:
                         st.success('Publish request sent')
-                        st.json(res)
+                        st.write(res)
 
 with tab_linkedin:
     st.subheader('LinkedIn Connection')
