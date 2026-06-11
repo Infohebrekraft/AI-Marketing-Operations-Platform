@@ -43,6 +43,42 @@ def api_put(path, payload):
         return None
     return r.json()
 
+def api_delete(path):
+    r = requests.delete(
+        f'{API}{path}',
+        headers=headers(),
+        timeout=120
+    )
+
+    if r.status_code >= 400:
+        st.error(r.text)
+        return None
+
+    return r.json()
+
+
+def api_upload(path, uploaded_file):
+    files = {
+        "file": (
+            uploaded_file.name,
+            uploaded_file.getvalue(),
+            uploaded_file.type
+        )
+    }
+
+    r = requests.post(
+        f'{API}{path}',
+        files=files,
+        headers=headers(),
+        timeout=120
+    )
+
+    if r.status_code >= 400:
+        st.error(r.text)
+        return None
+
+    return r.json()
+
 with st.sidebar:
     st.header('Account')
     mode = st.radio('Mode', ['Login', 'Register'])
@@ -121,6 +157,7 @@ with tab_brand:
             'timezone': timezone,
         }
         data = api_put(f'/api/orgs/{org_id}/brand', payload)
+
         if data:
             st.success('Brand profile saved')
 
@@ -143,82 +180,142 @@ with tab_generate:
             st.write(data['content'])
             
             with st.expander("AI generation details"):
-                st.json(data.get('ai_metadata', {}))
+                #st.json(data.get('ai_metadata', {}))
+                st.caption("Generated with HebreKraft AI Engine")
 
 
 with tab_posts:
-    st.subheader('Generated Posts')
+    st.subheader('Content Studio')
+
     posts = api_get(f'/api/content/org/{org_id}/posts') or []
 
-    for p in posts:
-        with st.expander(f"#{p['id']} — {p['title']} — {p['status']}"):
-            edited_title = st.text_input(
-                f"Title for post {p['id']}",
-                value=p.get('title') or '',
-                key=f"title_{p['id']}"
-            )
+    if not posts:
+        st.info("No posts generated yet.")
+    else:
+        for p in posts:
+            with st.expander(f"#{p['id']} — {p['title']} — {p['status']}"):
+                edited_title = st.text_input(
+                    f"Title",
+                    value=p.get('title') or '',
+                    key=f"title_{p['id']}"
+                )
 
-            edited_content = st.text_area(
-                f"Content for post {p['id']}",
-                value=p.get('content') or '',
-                height=240,
-                key=f"content_{p['id']}"
-            )
+                edited_content = st.text_area(
+                    f"Content",
+                    value=p.get('content') or '',
+                    height=260,
+                    key=f"content_{p['id']}"
+                )
 
-            image_prompt = st.text_area(
-                f"Image direction / prompt for post {p['id']}",
-                value=f"{p.get('image_title') or ''}\n{p.get('image_subtitle') or ''}",
-                height=100,
-                key=f"image_prompt_{p['id']}"
-            )
+                image_prompt = st.text_area(
+                    f"Image direction / prompt",
+                    value=f"{p.get('image_title') or ''}\n{p.get('image_subtitle') or ''}",
+                    height=100,
+                    key=f"image_prompt_{p['id']}"
+                )
 
-            uploaded_image = st.file_uploader(
-                f"Upload/change image for post {p['id']}",
-                type=["png", "jpg", "jpeg"],
-                key=f"image_upload_{p['id']}"
-            )
+                if p.get("image_path"):
+                    st.caption("Current image attached.")
+                    try:
+                        st.image(
+                            f"{API}/api/content/posts/{p['id']}/image",
+                            use_container_width=True
+                        )
+                    except Exception:
+                        st.info("Image exists but could not be previewed.")
 
-            st.caption(f"Topic: {p.get('topic')} | Scheduled: {p.get('scheduled_time')}")
+                uploaded_image = st.file_uploader(
+                    "Upload / change image",
+                    type=["png", "jpg", "jpeg"],
+                    key=f"image_upload_{p['id']}"
+                )
 
-            scheduled_time = st.text_input(
-                f'Schedule time for post {p["id"]}',
-                value=p.get('scheduled_time') or '2026-06-12T09:00:00+04:00',
-                key=f'sch_{p["id"]}'
-            )
+                st.caption(f"Topic: {p.get('topic')} | Scheduled: {p.get('scheduled_time')}")
 
-            col1, col2, col3 = st.columns(3)
+                scheduled_time = st.text_input(
+                    'Schedule time',
+                    value=p.get('scheduled_time') or '2026-06-12T09:00:00+04:00',
+                    key=f'sch_{p["id"]}'
+                )
 
-            with col1:
-                if st.button('Save Draft Changes', key=f'save_{p["id"]}'):
-                    res = api_put(
-                        f'/api/content/posts/{p["id"]}',
-                        {
-                            'title': edited_title,
-                            'content': edited_content,
-                            'image_prompt': image_prompt
-                        }
-                    )
+                publish_mode = st.radio(
+                    "Publishing mode",
+                    ["Manual approval", "Auto publish when scheduled"],
+                    key=f"mode_{p['id']}",
+                    horizontal=True
+                )
+
+                col1, col2, col3, col4 = st.columns(4)
+
+                with col1:
+                    if st.button('Save Draft', key=f'save_{p["id"]}'):
+                        res = api_put(
+                            f'/api/content/posts/{p["id"]}',
+                            {
+                                'title': edited_title,
+                                'content': edited_content,
+                                'image_prompt': image_prompt,
+                                'status': 'draft'
+                            }
+                        )
+                        if res:
+                            st.success('Draft updated')
+
+                with col2:
+                    if st.button('Upload Image', key=f'upload_{p["id"]}'):
+                        if uploaded_image:
+                            res = api_upload(
+                                f'/api/content/posts/{p["id"]}/upload-image',
+                                uploaded_image
+                            )
+                            if res:
+                                st.success('Image uploaded')
+                        else:
+                            st.warning("Please select an image first.")
+
+                with col3:
+                    if st.button('Schedule', key=f'schedule_{p["id"]}'):
+                        status = 'scheduled_auto' if publish_mode == "Auto publish when scheduled" else 'scheduled'
+                        api_put(
+                            f'/api/content/posts/{p["id"]}',
+                            {
+                                'title': edited_title,
+                                'content': edited_content,
+                                'image_prompt': image_prompt,
+                                'status': status
+                            }
+                        )
+                        res = api_post(
+                            '/api/content/schedule',
+                            {
+                                'post_id': p['id'],
+                                'scheduled_time': scheduled_time
+                            }
+                        )
+                        if res:
+                            st.success(f'Scheduled as {status}')
+
+                with col4:
+                    if st.button('Publish Now', key=f'publish_{p["id"]}'):
+                        save_res = api_put(
+                            f'/api/content/posts/{p["id"]}',
+                            {
+                                'title': edited_title,
+                                'content': edited_content,
+                                'image_prompt': image_prompt,
+                                'status': 'draft'
+                            }
+                        )
+                        if save_res:
+                            res = api_post(f'/api/linkedin/publish/{p["id"]}', {})
+                            if res:
+                                st.success('Publish request sent')
+                                st.write(res)
+
+                if st.button('Delete Draft', key=f'delete_{p["id"]}'):
+                    res = api_delete(f'/api/content/posts/{p["id"]}')
                     if res:
-                        st.success('Draft updated')
-
-            with col2:
-                if st.button('Schedule', key=f'schedule_{p["id"]}'):
-                    res = api_post(
-                        '/api/content/schedule',
-                        {
-                            'post_id': p['id'],
-                            'scheduled_time': scheduled_time
-                        }
-                    )
-                    if res:
-                        st.success('Scheduled')
-
-            with col3:
-                if st.button('Publish Now to LinkedIn', key=f'publish_{p["id"]}'):
-                    res = api_post(f'/api/linkedin/publish/{p["id"]}', {})
-                    if res:
-                        st.success('Publish request sent')
-                        st.write(res)
+                        st.success('Draft deleted')
 
 with tab_linkedin:
     st.subheader('LinkedIn Connection')
