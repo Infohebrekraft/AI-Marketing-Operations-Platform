@@ -58,7 +58,15 @@ with st.sidebar:
                 st.success('Account created')
     else:
         if st.button('Login'):
-            data = api_post('/api/auth/login', {'email': email, 'password': password})
+            data = requests.post(
+                f"{API}/api/auth/login",
+                data={
+                    "username": email,
+                    "password": password
+                },
+                timeout=120
+            ).json()
+
             if data:
                 st.session_state.token = data['access_token']
                 st.success('Logged in')
